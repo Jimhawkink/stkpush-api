@@ -39,11 +39,11 @@ if (!$accessToken) {
 
 // --- Prepare STK Push request ---
 $timestamp = date('YmdHis');
-$passwordEncoded = base64_encode($shortCode . $passkey . $timestamp);
+$password = base64_encode($shortCode . $passkey . $timestamp);
 
 $request = [
     'BusinessShortCode' => $shortCode,
-    'Password' => $passwordEncoded,
+    'Password' => $password,
     'Timestamp' => $timestamp,
     'TransactionType' => 'CustomerPayBillOnline',
     'Amount' => $amount,
