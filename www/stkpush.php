@@ -17,6 +17,18 @@ $shortCode = getenv('MPESA_SHORTCODE') ?: '7887702';
 $passkey = getenv('MPESA_PASSKEY') ?: '8ba2b74132b75970ed1d1ca22396f8b4eb79106902bf8e0017f4f0558fb6cc18';
 $callbackUrl = getenv('MPESA_CALLBACK_URL') ?: 'https://stkpush-api.onrender.com/callback.php';
 
+// --- Logs ---
+$logDir = __DIR__ . '/logs';
+if (!file_exists($logDir)) mkdir($logDir, 0777, true);
+$logFile = $logDir . '/stk_debug.log';
+
+// --- Debug endpoint to view logs in browser ---
+if (isset($_GET['debug']) && $_GET['debug'] == '1') {
+    header('Content-Type: text/plain');
+    echo file_get_contents($logFile);
+    exit;
+}
+
 // --- Input from frontend ---
 $input = json_decode(file_get_contents('php://input'), true);
 $amount = $input['amount'] ?? 1;
@@ -54,17 +66,13 @@ $request = [
     'TransactionDesc' => $transactionDesc
 ];
 
-// --- Log request for debugging ---
-$logFile = __DIR__ . '/logs/stk_debug.log';
-if (!file_exists(dirname($logFile))) {
-    mkdir(dirname($logFile), 0777, true);
-}
+// --- Log request ---
 file_put_contents($logFile, "[".date('Y-m-d H:i:s')."] REQUEST: " . json_encode($request) . PHP_EOL, FILE_APPEND);
 
 // --- Make STK Push request ---
 $response = makeStkRequest($accessToken, $request);
 
-// --- Log response for debugging ---
+// --- Log response ---
 file_put_contents($logFile, "[".date('Y-m-d H:i:s')."] RESPONSE: " . json_encode($response) . PHP_EOL, FILE_APPEND);
 
 // --- Handle response ---
