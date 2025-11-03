@@ -17,15 +17,14 @@ $shortCode = getenv('MPESA_SHORTCODE') ?: '7887702';
 $passkey = getenv('MPESA_PASSKEY') ?: '8ba2b74132b75970ed1d1ca22396f8b4eb79106902bf8e0017f4f0558fb6cc18';
 $callbackUrl = getenv('MPESA_CALLBACK_URL') ?: 'https://stkpush-api.onrender.com/callback.php';
 
-// --- Input from frontend (Android app or web form) ---
+// --- Input from frontend ---
 $input = json_decode(file_get_contents('php://input'), true);
-
 $amount = $input['amount'] ?? 1;
 $phone = $input['phone'] ?? '';
 $accountRef = $input['account'] ?? 'ALPHAPLUS';
 $transactionDesc = $input['description'] ?? 'Payment';
 
-// ✅ Sanitize phone number (2547XXXXXXXX)
+// ✅ Sanitize phone number
 $phone = preg_replace('/^0/', '254', $phone);
 if (!preg_match('/^254\d{9}$/', $phone)) {
     respond(false, "Invalid phone number format. Use 07XXXXXXXX or 2547XXXXXXXX");
@@ -55,7 +54,18 @@ $request = [
     'TransactionDesc' => $transactionDesc
 ];
 
+// --- Log request for debugging ---
+$logFile = __DIR__ . '/logs/stk_debug.log';
+if (!file_exists(dirname($logFile))) {
+    mkdir(dirname($logFile), 0777, true);
+}
+file_put_contents($logFile, "[".date('Y-m-d H:i:s')."] REQUEST: " . json_encode($request) . PHP_EOL, FILE_APPEND);
+
+// --- Make STK Push request ---
 $response = makeStkRequest($accessToken, $request);
+
+// --- Log response for debugging ---
+file_put_contents($logFile, "[".date('Y-m-d H:i:s')."] RESPONSE: " . json_encode($response) . PHP_EOL, FILE_APPEND);
 
 // --- Handle response ---
 if (!$response || !isset($response['ResponseCode'])) {
