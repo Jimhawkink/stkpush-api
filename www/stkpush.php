@@ -1,6 +1,5 @@
 <?php
 // stkpush.php — Initiate M-Pesa STK Push
-
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
@@ -26,8 +25,11 @@ $phone = $input['phone'] ?? '';
 $accountRef = $input['account'] ?? 'ALPHAPLUS';
 $transactionDesc = $input['description'] ?? 'Payment';
 
-// Sanitize phone number
+// ✅ Sanitize phone number (2547XXXXXXXX)
 $phone = preg_replace('/^0/', '254', $phone);
+if (!preg_match('/^254\d{9}$/', $phone)) {
+    respond(false, "Invalid phone number format. Use 07XXXXXXXX or 2547XXXXXXXX");
+}
 
 // --- Get access token ---
 $accessToken = getAccessToken($consumerKey, $consumerSecret);
@@ -35,13 +37,13 @@ if (!$accessToken) {
     respond(false, "Failed to get access token from M-Pesa");
 }
 
-// --- Initiate STK push ---
+// --- Prepare STK Push request ---
 $timestamp = date('YmdHis');
-$password = base64_encode($shortCode . $passkey . $timestamp);
+$passwordEncoded = base64_encode($shortCode . $passkey . $timestamp);
 
 $request = [
     'BusinessShortCode' => $shortCode,
-    'Password' => $password,
+    'Password' => $passwordEncoded,
     'Timestamp' => $timestamp,
     'TransactionType' => 'CustomerPayBillOnline',
     'Amount' => $amount,
@@ -55,20 +57,28 @@ $request = [
 
 $response = makeStkRequest($accessToken, $request);
 
+// --- Handle response ---
 if (!$response || !isset($response['ResponseCode'])) {
     respond(false, "Invalid response from M-Pesa: " . json_encode($response));
 }
 
 if ($response['ResponseCode'] == '0') {
-    // Success: Save to database
+    // ✅ Save to database
     $conn = new mysqli($host, $user, $password, $database, $port);
-    if ($conn->connect_error) respond(false, "DB Connection failed: " . $conn->connect_error);
+    if ($conn->connect_error) {
+        respond(false, "DB Connection failed: " . $conn->connect_error);
+    }
 
     $MerchantRequestID = $response['MerchantRequestID'] ?? '';
     $CheckoutRequestID = $response['CheckoutRequestID'] ?? '';
-    $CustomerMessage = $response['CustomerMessage'] ?? '';
+    $CustomerMessage = $response['CustomerMessage'] ?? 'Request accepted for processing';
 
-    $stmt = $conn->prepare("INSERT INTO mpesa_transactions (MerchantRequestID, CheckoutRequestID, ResultCode, ResultDesc, Amount, PhoneNumber, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
+    $stmt = $conn->prepare("
+        INSERT INTO mpesa_transactions 
+        (MerchantRequestID, CheckoutRequestID, ResultCode, ResultDesc, Amount, PhoneNumber, created_at) 
+        VALUES (?, ?, ?, ?, ?, ?, NOW())
+    ");
+
     $resultCode = 0;
     $resultDesc = 'Request accepted for processing';
     $stmt->bind_param('ssisss', $MerchantRequestID, $CheckoutRequestID, $resultCode, $resultDesc, $amount, $phone);
@@ -85,7 +95,6 @@ if ($response['ResponseCode'] == '0') {
 }
 
 // --- Helper Functions ---
-
 function getAccessToken($key, $secret) {
     $credentials = base64_encode("$key:$secret");
     $curl = curl_init();
