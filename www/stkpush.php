@@ -1,14 +1,14 @@
 <?php
-// stkpush.php — Initiate M-Pesa STK Push
+// stkpush.php – Initiate M-Pesa STK Push
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-// --- Database Configuration (CloudClusters) ---
-$host = getenv('DB_HOST') ?: 'mysql-204162-0.cloudclusters.net';
-$user = getenv('DB_USER') ?: 'admin';
-$password = getenv('DB_PASSWORD') ?: '5ZT8bJWM';
-$database = getenv('DB_NAME') ?: 'Mpesa_DB';
-$port = intval(getenv('DB_PORT') ?: 19902);
+// --- Database Configuration (Railway) ---
+$host = getenv('DB_HOST') ?: 'maglev.proxy.rlwy.net';
+$user = getenv('DB_USER') ?: 'root';
+$password = getenv('DB_PASSWORD') ?: 'cJYEAVTFXdujqruHefgQxugPVfdASWRv';
+$database = getenv('DB_NAME') ?: 'railway';
+$port = intval(getenv('DB_PORT') ?: 13831);
 
 // --- M-Pesa Credentials ---
 $consumerKey = getenv('MPESA_CONSUMER_KEY') ?: 'BqGXfPzkAS3Ada7JAV6jNcr26hKRmzVn';

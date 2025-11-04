@@ -1,10 +1,10 @@
 <?php
-// config.php - MySQL connection using environment variables from Docker
-$host = getenv('DB_HOST') ?: 'mysql-204162-0.cloudclusters.net';
-$user = getenv('DB_USER') ?: 'admin';
-$password = getenv('DB_PASSWORD') ?: '5ZT8bJWM';
-$database = getenv('DB_NAME') ?: 'Mpesa_DB';
-$port = intval(getenv('DB_PORT') ?: 19902);
+// config.php - Railway MySQL connection
+$host = getenv('DB_HOST') ?: 'maglev.proxy.rlwy.net';
+$user = getenv('DB_USER') ?: 'root';
+$password = getenv('DB_PASSWORD') ?: 'cJYEAVTFXdujqruHefgQxugPVfdASWRv';
+$database = getenv('DB_NAME') ?: 'railway';
+$port = intval(getenv('DB_PORT') ?: 13831);
 
 $conn = new mysqli($host, $user, $password, $database, $port);
 

@@ -1,18 +1,21 @@
 <?php
 header("Content-Type: application/json");
 
-// ✅ Include database configuration (recommended)
-require_once __DIR__ . "/config.php";  // Make sure config.php exists in same folder
+// ✅ Railway Database Configuration
+$host = getenv('DB_HOST') ?: 'maglev.proxy.rlwy.net';
+$user = getenv('DB_USER') ?: 'root';
+$password = getenv('DB_PASSWORD') ?: 'cJYEAVTFXdujqruHefgQxugPVfdASWRv';
+$database = getenv('DB_NAME') ?: 'railway';
+$port = intval(getenv('DB_PORT') ?: 13831);
 
-// OR, if you prefer to keep it self-contained without config.php, use this:
-///*
-// $conn = new mysqli("db", "fatherss_mp", "J1iMh078@", "fatherss_mp", 3306);
-// if ($conn->connect_errno) {
-//     echo json_encode(["success" => false, "message" => $conn->connect_error]);
-//     exit();
-// }
-// $conn->set_charset("utf8mb4");
-//*/
+$conn = new mysqli($host, $user, $password, $database, $port);
+
+if ($conn->connect_errno) {
+    echo json_encode(["success" => false, "message" => $conn->connect_error]);
+    exit();
+}
+
+$conn->set_charset("utf8mb4");
 
 // Get JSON body from POST request
 $data = json_decode(file_get_contents("php://input"), true);

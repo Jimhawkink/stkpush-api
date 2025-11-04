@@ -1,22 +1,22 @@
 <?php
 // stk_status_checker.php - Checks pending transactions and updates their status
 
-$host = "dbmysql-204162-0.cloudclusters.net";
-$user = "admin";
-$password = "5ZT8bJWM";
-$database = "Mpesa_DB";
-$port = 19902;
+// Railway Database Configuration
+$host = "maglev.proxy.rlwy.net";
+$user = "root";
+$password = "cJYEAVTFXdujqruHefgQxugPVfdASWRv";
+$database = "railway";
+$port = 13831;
 
 // M-Pesa API Configuration
 $consumer_key = "BqGXfPzkAS3Ada7JAV6jNcr26hKRmzVn";
 $consumer_secret = "NHfO1qmG1pMzBiVy";
-$business_short_code = "7887702"; // Your business shortcode
+$business_short_code = "7887702";
 $passkey = "8ba2b74132b75970ed1d1ca22396f8b4eb79106902bf8e0017f4f0558fb6cc18";
 
 // Function to get M-Pesa access token
 function getMpesaAccessToken($consumer_key, $consumer_secret) {
-    $url = 'https://sandbox-api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
-    // For production: https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials
+    $url = 'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
     
     $credentials = base64_encode($consumer_key . ':' . $consumer_secret);
     
@@ -39,8 +39,7 @@ function getMpesaAccessToken($consumer_key, $consumer_secret) {
 
 // Function to query STK transaction status
 function queryStkStatus($access_token, $business_short_code, $checkout_request_id, $passkey) {
-    $url = 'https://sandbox-api.safaricom.co.ke/mpesa/stkpushquery/v1/query';
-    // For production: https://api.safaricom.co.ke/mpesa/stkpushquery/v1/query
+    $url = 'https://api.safaricom.co.ke/mpesa/stkpushquery/v1/query';
     
     $timestamp = date('YmdHis');
     $password = base64_encode($business_short_code . $passkey . $timestamp);
@@ -78,7 +77,6 @@ function logStatusCheck($message) {
 }
 
 try {
-    // Connect to database
     $conn = new mysqli($host, $user, $password, $database, $port);
     if ($conn->connect_error) {
         die("DB Connection failed: " . $conn->connect_error);
@@ -86,7 +84,6 @@ try {
     
     logStatusCheck("Starting status check for pending transactions");
     
-    // Get access token
     $access_token = getMpesaAccessToken($consumer_key, $consumer_secret);
     if (!$access_token) {
         throw new Exception("Failed to get M-Pesa access token");
@@ -94,7 +91,6 @@ try {
     
     logStatusCheck("Successfully obtained M-Pesa access token");
     
-    // Find pending transactions (older than 2 minutes to allow processing time)
     $stmt = $conn->prepare("
         SELECT id, CheckoutRequestID, MerchantRequestID, Amount, PhoneNumber, created_at 
         FROM mpesa_transactions 
@@ -118,14 +114,12 @@ try {
         
         logStatusCheck("Checking transaction ID: $transactionId, CheckoutRequestID: $checkoutRequestID");
         
-        // Query M-Pesa for status
         $statusResponse = queryStkStatus($access_token, $business_short_code, $checkoutRequestID, $passkey);
         
         if (isset($statusResponse['ResultCode'])) {
             $resultCode = $statusResponse['ResultCode'];
             $resultDesc = $statusResponse['ResultDesc'] ?? '';
             
-            // Update transaction with real status
             $updateStmt = $conn->prepare("
                 UPDATE mpesa_transactions 
                 SET ResultCode = ?, ResultDesc = ?, updated_at = NOW() 
@@ -144,7 +138,6 @@ try {
             logStatusCheck("No valid response for transaction $transactionId: " . json_encode($statusResponse));
         }
         
-        // Small delay to avoid rate limiting
         sleep(1);
     }
     
