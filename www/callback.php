@@ -20,9 +20,12 @@ function logMessage($msg) {
 }
 
 try {
-    // Connect to DB
-    $conn = new mysqli($host, $user, $password, $database, $port);
-    if ($conn->connect_error) throw new Exception("DB Connection failed: " . $conn->connect_error);
+    // ✅ Connect to DB using PDO instead of mysqli
+    $dsn = "mysql:host=$host;port=$port;dbname=$database;charset=utf8mb4";
+    $conn = new PDO($dsn, $user, $password, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+    ]);
     logMessage("Database connected successfully");
 
     // Get raw JSON
@@ -51,11 +54,11 @@ try {
     // Extract CallbackMetadata
     if (isset($cb['CallbackMetadata']['Item'])) {
         foreach ($cb['CallbackMetadata']['Item'] as $item) {
-            switch($item['Name']) {
+            switch ($item['Name']) {
                 case 'Amount': $Amount = $item['Value']; break;
                 case 'MpesaReceiptNumber': $MpesaReceiptNumber = $item['Value']; break;
                 case 'PhoneNumber': $PhoneNumber = $item['Value']; break;
-                case 'TransactionDate': 
+                case 'TransactionDate':
                     $TransactionDate = date('Y-m-d H:i:s', strtotime($item['Value']));
                     break;
             }
@@ -64,28 +67,26 @@ try {
 
     // Check if transaction exists in MySQL
     $stmt = $conn->prepare("SELECT id, ResultCode, MpesaReceiptNumber FROM mpesa_transactions WHERE CheckoutRequestID = ? LIMIT 1");
-    $stmt->bind_param("s", $CheckoutRequestID);
-    $stmt->execute();
-    $res = $stmt->get_result();
+    $stmt->execute([$CheckoutRequestID]);
+    $row = $stmt->fetch();
 
     $message = "";
 
-    if ($res->num_rows > 0) {
-        $row = $res->fetch_assoc();
-
+    if ($row) {
         // Update if receipt arrives or ResultCode changed
         if (($row['ResultCode'] != $ResultCode) || (empty($row['MpesaReceiptNumber']) && !empty($MpesaReceiptNumber))) {
-            $upd = $conn->prepare("UPDATE mpesa_transactions 
-                                   SET ResultCode=?, ResultDesc=?, 
-                                       Amount=COALESCE(?, Amount), 
-                                       MpesaReceiptNumber=COALESCE(NULLIF(?,''), MpesaReceiptNumber), 
-                                       PhoneNumber=COALESCE(NULLIF(?,''), PhoneNumber), 
-                                       TransactionDate=COALESCE(?,TransactionDate), 
-                                       updated_at=NOW() 
-                                   WHERE id=?");
-            $upd->bind_param("isdsssi", $ResultCode, $ResultDesc, $Amount, $MpesaReceiptNumber, $PhoneNumber, $TransactionDate, $row['id']);
-            $upd->execute();
-            $upd->close();
+            $upd = $conn->prepare("
+                UPDATE mpesa_transactions 
+                SET ResultCode = ?, 
+                    ResultDesc = ?, 
+                    Amount = COALESCE(?, Amount), 
+                    MpesaReceiptNumber = COALESCE(NULLIF(?, ''), MpesaReceiptNumber), 
+                    PhoneNumber = COALESCE(NULLIF(?, ''), PhoneNumber), 
+                    TransactionDate = COALESCE(?, TransactionDate), 
+                    updated_at = NOW() 
+                WHERE id = ?
+            ");
+            $upd->execute([$ResultCode, $ResultDesc, $Amount, $MpesaReceiptNumber, $PhoneNumber, $TransactionDate, $row['id']]);
             $message = "Transaction updated successfully";
             logMessage("Updated transaction id {$row['id']} - Receipt: $MpesaReceiptNumber");
         } else {
@@ -94,18 +95,15 @@ try {
         }
     } else {
         // Insert new
-        $ins = $conn->prepare("INSERT INTO mpesa_transactions 
+        $ins = $conn->prepare("
+            INSERT INTO mpesa_transactions 
             (MerchantRequestID, CheckoutRequestID, ResultCode, ResultDesc, Amount, MpesaReceiptNumber, PhoneNumber, TransactionDate, raw, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
-        $ins->bind_param("ssissssss", $MerchantRequestID, $CheckoutRequestID, $ResultCode, $ResultDesc, $Amount, $MpesaReceiptNumber, $PhoneNumber, $TransactionDate, $callbackJSON);
-        $ins->execute();
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        ");
+        $ins->execute([$MerchantRequestID, $CheckoutRequestID, $ResultCode, $ResultDesc, $Amount, $MpesaReceiptNumber, $PhoneNumber, $TransactionDate, $callbackJSON]);
         $message = "Transaction saved successfully";
-        $ins->close();
         logMessage("Inserted transaction - CheckoutRequestID: $CheckoutRequestID, Receipt: $MpesaReceiptNumber");
     }
-
-    $stmt->close();
-    $conn->close();
 
     // 🔥 Forward to VB.NET API so SQL Server also gets updated
     try {
@@ -141,7 +139,7 @@ try {
         'ResultDesc' => 'Transaction Completed successfully',
         'Status' => $message
     ]);
- 
+
 } catch (Exception $e) {
     logMessage("ERROR: " . $e->getMessage());
     header('Content-Type: application/json');
