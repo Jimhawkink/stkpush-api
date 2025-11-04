@@ -6,11 +6,14 @@ ini_set('display_errors', 1);
 // =============================
 // DATABASE CONFIGURATION
 // =============================
-$host = "mysql.railway.internal";
+// =============================
+// DATABASE CONFIGURATION
+// =============================
+$host = "maglev.proxy.rlwy.net";  // ✅ Public Railway proxy
 $user = "root";
 $password = "cJYEAVTFXdujqruHefgQxugPVfdASWRv";
 $database = "railway";
-$port = 3306;
+$port = 13831;  // ✅ Your assigned port
 
 // =============================
 // VB.NET API ENDPOINT
