@@ -6,11 +6,11 @@ ini_set('display_errors', 1);
 // =============================
 // DATABASE CONFIGURATION
 // =============================
-$host = "dbmysql-204162-0.cloudclusters.net";
-$user = "admin";
-$password = "5ZT8bJWM";
-$database = "Mpesa_DB";
-$port = 19902;
+$host = "mysql.railway.internal";
+$user = "root";
+$password = "cJYEAVTFXdujqruHefgQxugPVfdASWRv";
+$database = "railway";
+$port = 3306;
 
 // =============================
 // VB.NET API ENDPOINT

@@ -15,7 +15,7 @@ $consumerKey = getenv('MPESA_CONSUMER_KEY') ?: 'BqGXfPzkAS3Ada7JAV6jNcr26hKRmzVn
 $consumerSecret = getenv('MPESA_CONSUMER_SECRET') ?: 'NHfO1qmG1pMzBiVy';
 $shortCode = getenv('MPESA_SHORTCODE') ?: '7887702';
 $passkey = getenv('MPESA_PASSKEY') ?: '8ba2b74132b75970ed1d1ca22396f8b4eb79106902bf8e0017f4f0558fb6cc18';
-$callbackUrl = getenv('MPESA_CALLBACK_URL') ?: 'https://stkpush-api.onrender.com/callback.php';
+$callbackUrl = getenv('MPESA_CALLBACK_URL') ?: 'https://stkpush-api-production.up.railway.app/callback.php';
 
 // --- Logs ---
 $logDir = __DIR__ . '/logs';
