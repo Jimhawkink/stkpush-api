@@ -1,15 +1,37 @@
-# Use official PHP image
-FROM php:8.2-cli
+# Use official PHP 8.2 Apache image
+FROM php:8.2-apache
 
-# Set working directory
-WORKDIR /app
+# Install system dependencies and PHP extensions
+RUN apt-get update && apt-get install -y \
+    default-mysql-client \
+    libpng-dev \
+    libonig-dev \
+    libxml2-dev \
+    libzip-dev \
+    zip \
+    unzip \
+    && docker-php-ext-install pdo pdo_mysql mysqli \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Copy project files
-COPY ./www /app
+# Configure Apache to listen on port 10000
+RUN sed -i 's/Listen 80/Listen 10000/' /etc/apache2/ports.conf && \
+    sed -i 's/:80>/:10000>/' /etc/apache2/sites-available/000-default.conf
 
-# Expose port (Render sets $PORT)
-ENV PORT=10000
-EXPOSE $PORT
+# Enable Apache rewrite module
+RUN a2enmod rewrite
 
-# Start built-in PHP server
-CMD ["php", "-S", "0.0.0.0:10000", "-t", "."]
+# Copy PHP files from www/ directory to Apache web root
+COPY www/ /var/www/html/
+
+# Set proper permissions
+RUN chown -R www-data:www-data /var/www/html
+
+# Log Apache output to Render logs
+RUN ln -sf /dev/stdout /var/log/apache2/access.log \
+    && ln -sf /dev/stderr /var/log/apache2/error.log
+
+# Expose port 10000
+EXPOSE 10000
+
+# Start Apache
+CMD ["apache2-foreground"]
