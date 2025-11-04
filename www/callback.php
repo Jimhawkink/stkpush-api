@@ -6,14 +6,11 @@ ini_set('display_errors', 1);
 // =============================
 // DATABASE CONFIGURATION
 // =============================
-// =============================
-// DATABASE CONFIGURATION
-// =============================
-$host = "maglev.proxy.rlwy.net";  // ✅ Public Railway proxy
+$host = "maglev.proxy.rlwy.net";
 $user = "root";
 $password = "cJYEAVTFXdujqruHefgQxugPVfdASWRv";
 $database = "railway";
-$port = 13831;  // ✅ Your assigned port
+$port = 13831;
 
 // =============================
 // VB.NET API ENDPOINT
@@ -28,7 +25,6 @@ function logMessage($msg)
     $ts = date('Y-m-d H:i:s');
     $line = "[$ts] $msg\n";
     file_put_contents('mpesa_callback.log', $line, FILE_APPEND | LOCK_EX);
-    // ✅ Show logs live in Render dashboard
     echo $line;
     flush();
 }
@@ -97,9 +93,9 @@ try {
     logMessage("Parsed Data -> CheckoutRequestID: $CheckoutRequestID | Amount: $Amount | Receipt: $MpesaReceiptNumber | Phone: $PhoneNumber");
 
     // =============================
-    // CHECK EXISTING TRANSACTION
+    // CHECK EXISTING TRANSACTION (using lowercase column names)
     // =============================
-    $stmt = $conn->prepare("SELECT id, ResultCode, MpesaReceiptNumber FROM mpesa_transactions WHERE CheckoutRequestID = ? LIMIT 1");
+    $stmt = $conn->prepare("SELECT id, result_code, mpesa_receipt_number FROM mpesa_transactions WHERE checkout_request_id = ? LIMIT 1");
     $stmt->execute([$CheckoutRequestID]);
     $row = $stmt->fetch();
 
@@ -107,16 +103,15 @@ try {
 
     if ($row) {
         // UPDATE EXISTING TRANSACTION
-        if (($row['ResultCode'] != $ResultCode) || (empty($row['MpesaReceiptNumber']) && !empty($MpesaReceiptNumber))) {
+        if (($row['result_code'] != $ResultCode) || (empty($row['mpesa_receipt_number']) && !empty($MpesaReceiptNumber))) {
             $upd = $conn->prepare("
                 UPDATE mpesa_transactions 
-                SET ResultCode = ?, 
-                    ResultDesc = ?, 
-                    Amount = COALESCE(?, Amount), 
-                    MpesaReceiptNumber = COALESCE(NULLIF(?, ''), MpesaReceiptNumber), 
-                    PhoneNumber = COALESCE(NULLIF(?, ''), PhoneNumber), 
-                    TransactionDate = COALESCE(?, TransactionDate), 
-                    updated_at = NOW() 
+                SET result_code = ?, 
+                    result_desc = ?, 
+                    amount = COALESCE(?, amount), 
+                    mpesa_receipt_number = COALESCE(NULLIF(?, ''), mpesa_receipt_number), 
+                    phone_number = COALESCE(NULLIF(?, ''), phone_number), 
+                    created_at = COALESCE(?, created_at)
                 WHERE id = ?
             ");
             $upd->execute([$ResultCode, $ResultDesc, $Amount, $MpesaReceiptNumber, $PhoneNumber, $TransactionDate, $row['id']]);
@@ -127,13 +122,13 @@ try {
             logMessage("⚠️ Duplicate callback - CheckoutRequestID: $CheckoutRequestID");
         }
     } else {
-        // INSERT NEW TRANSACTION
+        // INSERT NEW TRANSACTION (using lowercase column names)
         $ins = $conn->prepare("
             INSERT INTO mpesa_transactions 
-            (MerchantRequestID, CheckoutRequestID, ResultCode, ResultDesc, Amount, MpesaReceiptNumber, PhoneNumber, TransactionDate, raw, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            (merchant_request_id, checkout_request_id, result_code, result_desc, amount, mpesa_receipt_number, phone_number, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ");
-        $ins->execute([$MerchantRequestID, $CheckoutRequestID, $ResultCode, $ResultDesc, $Amount, $MpesaReceiptNumber, $PhoneNumber, $TransactionDate, $callbackJSON]);
+        $ins->execute([$MerchantRequestID, $CheckoutRequestID, $ResultCode, $ResultDesc, $Amount, $MpesaReceiptNumber, $PhoneNumber, $TransactionDate]);
         $message = "Transaction saved successfully";
         logMessage("🆕 Inserted transaction - CheckoutRequestID: $CheckoutRequestID, Receipt: $MpesaReceiptNumber");
     }
