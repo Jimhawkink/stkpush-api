@@ -1,5 +1,5 @@
 <?php
-// mpesa_callback.php
+// mpesa_callback.php - FIXED VERSION
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
@@ -15,7 +15,7 @@ $port = 13831;
 // =============================
 // VB.NET API ENDPOINT
 // =============================
-$vbnetApiUrl = "http://your-vbnet-server/api/mpesa/update"; // 🔴 replace with real URL
+$vbnetApiUrl = "https://alphaplusapi.onrender.com/api/Mpesa/update";
 
 // =============================
 // LOGGING HELPER
@@ -70,7 +70,7 @@ try {
     $PhoneNumber = '';
     $TransactionDate = date('Y-m-d H:i:s');
 
-    // Extract CallbackMetadata
+    // Extract CallbackMetadata (only present on success ResultCode=0)
     if (isset($cb['CallbackMetadata']['Item'])) {
         foreach ($cb['CallbackMetadata']['Item'] as $item) {
             switch ($item['Name']) {
@@ -84,16 +84,27 @@ try {
                     $PhoneNumber = $item['Value'];
                     break;
                 case 'TransactionDate':
-                    $TransactionDate = date('Y-m-d H:i:s', strtotime($item['Value']));
+                    // M-Pesa format: 20231115143022 (YYYYMMDDHHmmss)
+                    $dateStr = (string)$item['Value'];
+                    if (strlen($dateStr) == 14) {
+                        $TransactionDate = date('Y-m-d H:i:s', strtotime(
+                            substr($dateStr, 0, 4) . '-' .
+                            substr($dateStr, 4, 2) . '-' .
+                            substr($dateStr, 6, 2) . ' ' .
+                            substr($dateStr, 8, 2) . ':' .
+                            substr($dateStr, 10, 2) . ':' .
+                            substr($dateStr, 12, 2)
+                        ));
+                    }
                     break;
             }
         }
     }
 
-    logMessage("Parsed Data -> CheckoutRequestID: $CheckoutRequestID | Amount: $Amount | Receipt: $MpesaReceiptNumber | Phone: $PhoneNumber");
+    logMessage("Parsed -> CheckoutRequestID: $CheckoutRequestID | ResultCode: $ResultCode | Amount: $Amount | Receipt: $MpesaReceiptNumber | Phone: $PhoneNumber");
 
     // =============================
-    // CHECK EXISTING TRANSACTION (using lowercase column names)
+    // CHECK EXISTING TRANSACTION
     // =============================
     $stmt = $conn->prepare("SELECT id, result_code, mpesa_receipt_number FROM mpesa_transactions WHERE checkout_request_id = ? LIMIT 1");
     $stmt->execute([$CheckoutRequestID]);
@@ -102,66 +113,74 @@ try {
     $message = "";
 
     if ($row) {
+        // =============================
         // UPDATE EXISTING TRANSACTION
-        if (($row['result_code'] != $ResultCode) || (empty($row['mpesa_receipt_number']) && !empty($MpesaReceiptNumber))) {
-            $upd = $conn->prepare("
-                UPDATE mpesa_transactions 
-                SET result_code = ?, 
-                    result_desc = ?, 
-                    amount = COALESCE(?, amount), 
-                    mpesa_receipt_number = COALESCE(NULLIF(?, ''), mpesa_receipt_number), 
-                    phone_number = COALESCE(NULLIF(?, ''), phone_number), 
-                    created_at = COALESCE(?, created_at)
-                WHERE id = ?
-            ");
-            $upd->execute([$ResultCode, $ResultDesc, $Amount, $MpesaReceiptNumber, $PhoneNumber, $TransactionDate, $row['id']]);
-            $message = "Transaction updated successfully";
-            logMessage("🔁 Updated transaction id {$row['id']} - Receipt: $MpesaReceiptNumber");
-        } else {
-            $message = "Duplicate callback - no action needed";
-            logMessage("⚠️ Duplicate callback - CheckoutRequestID: $CheckoutRequestID");
-        }
+        // =============================
+        logMessage("📝 Updating existing transaction ID: {$row['id']}");
+        
+        $upd = $conn->prepare("
+            UPDATE mpesa_transactions 
+            SET result_code = ?, 
+                result_desc = ?, 
+                amount = COALESCE(?, amount), 
+                mpesa_receipt_number = COALESCE(NULLIF(?, ''), mpesa_receipt_number), 
+                phone_number = COALESCE(NULLIF(?, ''), phone_number), 
+                created_at = COALESCE(?, created_at)
+            WHERE id = ?
+        ");
+        $upd->execute([$ResultCode, $ResultDesc, $Amount, $MpesaReceiptNumber, $PhoneNumber, $TransactionDate, $row['id']]);
+        $message = "Transaction updated: ResultCode=$ResultCode";
+        logMessage("✅ Updated transaction - Receipt: $MpesaReceiptNumber");
+        
     } else {
-        // INSERT NEW TRANSACTION (using lowercase column names)
+        // =============================
+        // INSERT NEW TRANSACTION
+        // =============================
+        logMessage("🆕 Inserting new transaction");
+        
         $ins = $conn->prepare("
             INSERT INTO mpesa_transactions 
             (merchant_request_id, checkout_request_id, result_code, result_desc, amount, mpesa_receipt_number, phone_number, created_at) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $ins->execute([$MerchantRequestID, $CheckoutRequestID, $ResultCode, $ResultDesc, $Amount, $MpesaReceiptNumber, $PhoneNumber, $TransactionDate]);
-        $message = "Transaction saved successfully";
-        logMessage("🆕 Inserted transaction - CheckoutRequestID: $CheckoutRequestID, Receipt: $MpesaReceiptNumber");
+        $message = "Transaction saved: ResultCode=$ResultCode";
+        logMessage("✅ Inserted transaction - CheckoutRequestID: $CheckoutRequestID");
     }
 
     // =============================
-    // FORWARD TO VB.NET API
+    // FORWARD TO VB.NET API (Only on success)
     // =============================
-    try {
-        $payload = [
-            "CheckoutRequestID" => $CheckoutRequestID,
-            "MpesaReceiptNumber" => $MpesaReceiptNumber,
-            "ResultCode" => $ResultCode,
-            "ResultDesc" => $ResultDesc,
-            "StatusMessage" => $ResultDesc,
-            "PhoneNumber" => $PhoneNumber,
-            "Amount" => $Amount,
-            "TransactionDate" => $TransactionDate
-        ];
+    if ($ResultCode == 0 && !empty($MpesaReceiptNumber)) {
+        try {
+            $payload = [
+                "CheckoutRequestID" => $CheckoutRequestID,
+                "MpesaReceiptNumber" => $MpesaReceiptNumber,
+                "ResultCode" => $ResultCode,
+                "ResultDesc" => $ResultDesc,
+                "StatusMessage" => $ResultDesc,
+                "PhoneNumber" => $PhoneNumber,
+                "Amount" => $Amount,
+                "TransactionDate" => $TransactionDate
+            ];
 
-        $ch = curl_init($vbnetApiUrl);
-        curl_setopt($ch, CURLOPT_POST, 1);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-        $resp = curl_exec($ch);
-        if (curl_errno($ch)) {
-            logMessage("❌ CURL error: " . curl_error($ch));
+            $ch = curl_init($vbnetApiUrl);
+            curl_setopt($ch, CURLOPT_POST, 1);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+            $resp = curl_exec($ch);
+            
+            if (curl_errno($ch)) {
+                logMessage("⚠️ CURL error forwarding to VB.NET: " . curl_error($ch));
+            } else {
+                logMessage("➡️ Forwarded to VB.NET API: Response=$resp");
+            }
+            curl_close($ch);
+        } catch (Exception $ex) {
+            logMessage("❌ ERROR forwarding to VB.NET API: " . $ex->getMessage());
         }
-        curl_close($ch);
-
-        logMessage("➡️ Forwarded to VB.NET API: " . json_encode($payload) . " | Response: $resp");
-    } catch (Exception $ex) {
-        logMessage("❌ ERROR forwarding to VB.NET API: " . $ex->getMessage());
     }
 
     // =============================
@@ -170,10 +189,10 @@ try {
     header('Content-Type: application/json');
     echo json_encode([
         'ResultCode' => 0,
-        'ResultDesc' => 'Transaction Completed successfully',
+        'ResultDesc' => 'Callback processed successfully',
         'Status' => $message
     ]);
-    logMessage("✅ Callback processed successfully -> $message");
+    logMessage("✅ Callback processed -> $message");
 
 } catch (Exception $e) {
     // =============================
@@ -183,7 +202,7 @@ try {
     header('Content-Type: application/json');
     echo json_encode([
         'ResultCode' => 1,
-        'ResultDesc' => 'Transaction received but processing failed',
+        'ResultDesc' => 'Callback received but processing failed',
         'Error' => $e->getMessage()
     ]);
 }
